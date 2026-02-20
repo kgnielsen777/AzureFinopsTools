@@ -2,8 +2,6 @@
 
 A PowerShell script to analyze Azure SQL Database and Elastic Pool costs, performance metrics, and provide right-sizing recommendations across multiple Azure subscriptions.
 
-> **Note:** This tool is designed to be used as a subfolder within your existing Azure operations repository.
-
 ## Overview
 
 This tool helps you:
@@ -23,7 +21,6 @@ This tool helps you:
   - Recommends optimal capacity based on 80% target utilization
   - Identifies over-provisioned resources
   - Flags unused databases (0% utilization)
-  - Prevents incorrect scale-up recommendations for under-utilized resources
 - **Efficient Querying**: 
   - Resource group scoped cost queries (not full subscription)
   - Built-in pagination for large datasets
@@ -70,7 +67,7 @@ cd AzSqlRightsizing
 Or clone as a subfolder:
 ```bash
 cd your-azure-repo
-git clone https://github.com/yourusername/azure-sql-cost-analysis.git AzSqlRightsizing
+git clone https://github.com/kgnielsen777/azure-sql-cost-analysis.git AzSqlRightsizing
 ```
 
 2. Ensure you have the required PowerShell modules installed (see Prerequisites)
@@ -86,7 +83,7 @@ cd AzSqlRightsizing
 
 2. Connect to Azure:
 ```powershell
-Connect-AzAccount
+Connect-AzAccount -UseDeviceAuthentication
 ```
 
 3. Run the script:
@@ -231,32 +228,6 @@ For resources showing **NoChange** but at minimum capacity with <20% utilization
 
 **Note**: Tier changes require manual intervention and may have feature limitations. Always test in non-production first.
 
-## Example Analysis
-
-```powershell
-# Load and analyze results (use your specific date/time)
-$data = Import-Csv "AzSqlRightsizingReport-2026-02-20-1430.csv"
-
-# Find biggest savings opportunities
-$data | Where-Object { [decimal]$_.PotentialSavings -gt 100 } | 
-    Sort-Object { [decimal]$_.PotentialSavings } -Descending |
-    Select-Object ResourceName, Capacity, RecommendedCapacity, CostAmount, PotentialSavings
-
-# Find unused databases
-$data | Where-Object { $_.RightSizingAction -like "*Unused*" } |
-    Select-Object ResourceName, ServerName, CostAmount, RightSizingAction
-
-# Find tier change opportunities
-$data | Where-Object { $_.TierChangeOpportunity -ne "" } |
-    Sort-Object { [decimal]$_.TierChangeSavings } -Descending |
-    Select-Object ResourceName, ServiceTier, Capacity, AvgOfDailyMaxUtilPercent, CostAmount, TierChangeOpportunity, TierChangeSavings
-
-# Calculate total potential savings
-$totalSavings = ($data | ForEach-Object { [decimal]$_.PotentialSavings } | Measure-Object -Sum).Sum
-$tierChangeSavings = ($data | ForEach-Object { [decimal]$_.TierChangeSavings } | Measure-Object -Sum).Sum
-Write-Host "Total potential monthly savings (capacity): $totalSavings"
-Write-Host "Total potential monthly savings (tier changes): $tierChangeSavings"
-```
 
 ## How It Works
 
@@ -367,16 +338,3 @@ MIT License - See LICENSE file for details
 
 Created for optimizing Azure SQL Database costs and performance across enterprise Azure environments.
 
-## Version History
-
-- **v1.4** - Current version
-  - Added tier change opportunity detection
-  - Added scale-up filtering parameter
-  - Renamed script to Get-AZSqlRightsizingData.ps1
-  - Timestamped CSV output (YYYY-MM-DD-HHmm)
-  - Progress tracking with subscription counters
-  - Comprehensive comment-based help
-- **v1.3** - Resource group scoping and pagination support
-- **v1.2** - Added unused database detection
-- **v1.1** - Added right-sizing recommendations
-- **v1.0** - Initial release with basic cost and utilization analysis
