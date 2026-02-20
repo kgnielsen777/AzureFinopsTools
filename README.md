@@ -1,4 +1,4 @@
-# Azure SQL Performance & Cost Optimization Tools
+# Azure Performance & Cost Optimization Tools
 
 A collection of PowerShell tools for analyzing and optimizing Azure costs and performance across multiple subscriptions.
 
