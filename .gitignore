@@ -1,0 +1,15 @@
+# PowerShell
+*.ps1~
+
+# Output files
+*.csv
+
+# Test files
+test.ps1
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# VS Code
+.vscode/
