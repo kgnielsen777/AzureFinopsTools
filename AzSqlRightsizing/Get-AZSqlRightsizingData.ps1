@@ -42,8 +42,9 @@
 #Connect-AzAccount -UseDeviceAuthentication
 
 # Configure which subscriptions to include (or query all)
-#$subscriptions = (Get-AzSubscription | Where-Object { $_.State -eq "Enabled" -and $_.Name -eq "YourSubscriptionName" })  # Limit to first 1 for testing
+#$subscriptions = (Get-AzSubscription | Where-Object { $_.State -eq "Enabled" -and $_.Name -eq "XYZ" })  # Limit to specific subscription
 
+#$subscriptions = (Get-AzSubscription | Where-Object { $_.State -eq "Enabled" }) | Select-Object -First 1  # Test with first subscription
 $subscriptions = (Get-AzSubscription | Where-Object { $_.State -eq "Enabled" })  # full run
 
 # Include scale-up recommendations in the report
@@ -527,13 +528,13 @@ $report = @()
 # Progress tracking
 $totalSubscriptions = $subscriptions.Count
 $currentSubscription = 0
-$startTime = Get-Date
+$scriptStartTime = Get-Date
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Azure SQL Cost & Performance Analysis" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Total subscriptions to process: $totalSubscriptions" -ForegroundColor Yellow
-Write-Host "Start time: $($startTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Yellow
+Write-Host "Start time: $($scriptStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Yellow
 Write-Host ""
 
 foreach ($sub in $subscriptions) {
@@ -720,53 +721,67 @@ foreach ($sub in $subscriptions) {
 }
 
 # Final summary
-$endTime = Get-Date
-$elapsedTime = $endTime - $startTime
+$scriptEndTime = Get-Date
+$elapsedTime = $scriptEndTime - $scriptStartTime
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Analysis Complete" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Total subscriptions processed: $totalSubscriptions" -ForegroundColor Yellow
-Write-Host "Total elastic pools analyzed: $($report | Where-Object { $_.ResourceType -eq 'ElasticPool' } | Measure-Object).Count" -ForegroundColor Yellow
-Write-Host "Total standalone databases analyzed: $($report | Where-Object { $_.ResourceType -eq 'Database' } | Measure-Object).Count" -ForegroundColor Yellow
+Write-Host "Total elastic pools analyzed: $(@($report | Where-Object { $_.ResourceType -eq 'ElasticPool' }).Count)" -ForegroundColor Yellow
+Write-Host "Total standalone databases analyzed: $(@($report | Where-Object { $_.ResourceType -eq 'Database' }).Count)" -ForegroundColor Yellow
 Write-Host "Total resources: $($report.Count)" -ForegroundColor Yellow
 
 $withRecommendations = ($report | Where-Object { $_.RightSizingAction -in @("ScaleUp", "ScaleDown", "ScaleDown-Unused") }).Count
 $totalSavings = ($report | Where-Object { $_.PotentialSavings -gt 0 } | Measure-Object -Property PotentialSavings -Sum).Sum
 if ($null -eq $totalSavings) { $totalSavings = 0 }
 
+$totalCurrentCost = ($report | Measure-Object -Property CostAmount -Sum).Sum
+if ($null -eq $totalCurrentCost) { $totalCurrentCost = 0 }
+
 Write-Host ""
 Write-Host "Resources with right-sizing opportunities: $withRecommendations" -ForegroundColor Magenta
+
+$currency = ($report | Where-Object { $_.Currency } | Select-Object -First 1).Currency
+if (-not $currency) { $currency = "" }
+
+Write-Host "Total current cost (last month): $([math]::Round($totalCurrentCost, 2)) $currency" -ForegroundColor Magenta
 if ($totalSavings -gt 0) {
-    $currency = ($report | Where-Object { $_.Currency } | Select-Object -First 1).Currency
-    if (-not $currency) { $currency = "" }
     Write-Host "Total potential savings: $([math]::Round($totalSavings, 2)) $currency" -ForegroundColor Magenta
 }
 
 Write-Host ""
-Write-Host "Start time: $($startTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Gray
-Write-Host "End time: $($endTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Gray
+Write-Host "Start time: $($scriptStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Gray
+Write-Host "End time: $($scriptEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Gray
 Write-Host "Elapsed time: $($elapsedTime.ToString('hh\:mm\:ss'))" -ForegroundColor Gray
 Write-Host ""
 
-# Filter report based on parameters
-$filteredReport = $report
-if (-not $IncludeScaleUpRecommendations) {
-    $scaleUpCount = ($report | Where-Object { $_.RightSizingAction -eq "ScaleUp" }).Count
-    $filteredReport = $report | Where-Object { $_.RightSizingAction -ne "ScaleUp" }
-    if ($scaleUpCount -gt 0) {
-        Write-Host ""
-        Write-Host "Note: Excluded $scaleUpCount ScaleUp recommendation(s) from export." -ForegroundColor Yellow
-        Write-Host "      Set `$IncludeScaleUpRecommendations = `$true to include them." -ForegroundColor Yellow
+# Adjust report based on parameters
+$finalReport = $report | ForEach-Object {
+    $item = $_
+    if (-not $IncludeScaleUpRecommendations -and $item.RightSizingAction -eq "ScaleUp") {
+        # Convert ScaleUp to NoChange to keep resources in report but suppress scale-up recommendations
+        $item.RightSizingAction = "NoChange"
+        $item.RecommendedCapacity = $item.Capacity
+        $item.EstimatedNewCost = $item.CostAmount
+        $item.PotentialSavings = 0
     }
+    $item
+}
+
+$scaleUpCount = ($report | Where-Object { $_.RightSizingAction -eq "ScaleUp" }).Count
+if ($scaleUpCount -gt 0 -and -not $IncludeScaleUpRecommendations) {
+    Write-Host ""
+    Write-Host "Note: $scaleUpCount ScaleUp recommendation(s) converted to NoChange." -ForegroundColor Yellow
+    Write-Host "      Set `$IncludeScaleUpRecommendations = `$true to see scale-up recommendations." -ForegroundColor Yellow
 }
 
 $timestamp = Get-Date -Format "yyyy-MM-dd-HHmm"
 $csvPath = "AzSqlRightsizingReport-$timestamp.csv"
-$filteredReport | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
+$finalReport | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "✓ Report exported: $csvPath" -ForegroundColor Green
-Write-Host "  Resources in report: $($filteredReport.Count)" -ForegroundColor Gray
+Write-Host "  Resources in report: $($finalReport.Count)" -ForegroundColor Gray
 Write-Host "========================================" -ForegroundColor Cyan
