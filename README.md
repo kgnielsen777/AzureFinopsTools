@@ -1,6 +1,6 @@
 # Azure SQL Performance & Cost Optimization Tools
 
-A collection of PowerShell tools for analyzing and optimizing Azure SQL Database costs and performance across multiple subscriptions.
+A collection of PowerShell tools for analyzing and optimizing Azure costs and performance across multiple subscriptions.
 
 ## Available Tools
 
@@ -67,10 +67,4 @@ AZSQLPerf-cost/
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
 
-## License
 
-MIT License - See individual tool folders for specific license files.
-
-## Author
-
-Created for optimizing Azure SQL Database costs and performance across enterprise Azure environments.
